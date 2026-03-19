@@ -2,6 +2,15 @@ import OpenAI from "openai";
 import { buildSystemPrompt } from "./prompt.js";
 import { executeTool } from "./tools/executor.js";
 import { tools } from "./tools/definitions.js";
+
+const MANAGER_TOOLS  = new Set(["close_position", "claim_fees", "swap_token", "update_config", "get_position_pnl", "get_my_positions", "set_position_note", "add_pool_note"]);
+const SCREENER_TOOLS = new Set(["deploy_position", "get_active_bin", "get_top_candidates", "check_smart_wallets_on_pool", "get_token_holders", "get_token_narrative", "get_pool_memory", "add_pool_note", "add_to_blacklist", "update_config", "get_wallet_balance", "get_my_positions"]);
+
+function getToolsForRole(agentType) {
+  if (agentType === "MANAGER")  return tools.filter(t => MANAGER_TOOLS.has(t.function.name));
+  if (agentType === "SCREENER") return tools.filter(t => SCREENER_TOOLS.has(t.function.name));
+  return tools;
+}
 import { getWalletBalances } from "./tools/wallet.js";
 import { getMyPositions } from "./tools/dlmm.js";
 import { log } from "./logger.js";
@@ -39,6 +48,7 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
     { role: "user", content: goal },
   ];
 
+  let emptyStreak = 0;
   for (let step = 0; step < maxSteps; step++) {
     log("agent", `Step ${step + 1}/${maxSteps}`);
 
@@ -53,7 +63,7 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
         response = await client.chat.completions.create({
           model: usedModel,
           messages,
-          tools,
+          tools: getToolsForRole(agentType),
           tool_choice: "auto",
           temperature: config.llm.temperature,
           max_tokens: maxOutputTokens ?? config.llm.maxTokens,
